@@ -1,3 +1,8 @@
+import os
+from playwright.sync_api import sync_playwright
+
+os.system("playwright install --with-deps")
+
 # Handle SQLite for ChromaDB
 try:
     __import__('pysqlite3')
@@ -9,7 +14,8 @@ except (ImportError, KeyError):
 import sys
 import streamlit as st
 from crew import Guitarmarket
-import os
+
+
 
 st.title('Your Guitar Price Comparison')
 
