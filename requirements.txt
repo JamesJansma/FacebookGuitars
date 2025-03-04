@@ -1,7 +1,7 @@
 crewai
 crewai-tools
-crewai-agent
 streamlit
+playwright
 exa-py
 requests
 pysqlite3-binary
