@@ -1,3 +1,4 @@
 crewai
+crewai[tools]
 streamlit
 pydantic
