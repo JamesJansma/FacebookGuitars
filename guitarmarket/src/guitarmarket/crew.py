@@ -115,6 +115,8 @@ class Guitarmarket():
 						except:
 							pass
 			browser.close()
+			print("Finished scraper tool")
+			print(f"First parsed: {parsed[0]}")
 			return parsed
 
 	@tool("gc scraper tool")
