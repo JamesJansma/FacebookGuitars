@@ -1,6 +1,6 @@
 import sys
 import streamlit as st
-from guitarmarket.crew import Guitarmarket
+from crew import Guitarmarket
 import os
 
 st.title('Your Guitar Price Comparison')
