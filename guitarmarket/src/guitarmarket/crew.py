@@ -4,7 +4,6 @@ from crewai.tools import tool
 from pydantic import BaseModel, ValidationError
 from typing import List
 from playwright.sync_api import sync_playwright
-import streamlit as st
 import os
 import time
 from bs4 import BeautifulSoup
@@ -74,7 +73,7 @@ class Guitarmarket():
 
 		parsed = []
 		with sync_playwright() as p:
-			browser = p.chromium.launch(headless=False)
+			browser = p.chromium.launch(headless=True)
 			page = browser.new_page()
 			page.goto(login_url)
 			time.sleep(2)
@@ -127,7 +126,7 @@ class Guitarmarket():
 
 		with sync_playwright() as p:
 				# Open a new browser page.
-				browser = p.chromium.launch(headless=False)
+				browser = p.chromium.launch(headless=True)
 				page = browser.new_page()
 				# Navigate to the URL.
 				page.goto(start_up_url)
@@ -163,10 +162,10 @@ class Guitarmarket():
 				return parsed
 
 
-	llm = LLM(
-            api_key=st.secrets["OPENAI_API_KEY"],
-            model="openai/gpt-4o-mini"
-        )
+	# llm = LLM(
+    #         api_key=st.secrets["OPENAI_API_KEY"],
+    #         model="openai/gpt-4o-mini"
+    #     )
 	
 	
 	@agent
@@ -176,7 +175,7 @@ class Guitarmarket():
 			# knowledge=[self.listing_source],
 			tools=[self.scraper_tool],
 			verbose=True,
-			llm=self.llm
+			# llm=self.llm
 		)
 	
 	@agent
@@ -186,7 +185,7 @@ class Guitarmarket():
 			tools=[self.gc_scraper_tool],
 			memory=True,
 			verbose=True,
-			llm=self.llm
+			# llm=self.llm
 		)
 	
 	@agent
@@ -195,7 +194,7 @@ class Guitarmarket():
 			config=self.agents_config['comparison_agent'],
 			tools=[self.comparison_tool],
 			verbose=True,
-			llm=self.llm
+			# llm=self.llm
 		)
 
 	# https://docs.crewai.com/concepts/tasks#overview-of-a-task
