@@ -95,7 +95,7 @@ class Guitarmarket():
 				page.goto(facebook_market_condition_url)
 				time.sleep(2)
 				for i in range(1):
-					page.mouse.wheel(0,15000)
+					# page.mouse.wheel(0,15000)
 					time.sleep(2)
 					html = page.content()
 					soup = BeautifulSoup(html, 'html.parser')
