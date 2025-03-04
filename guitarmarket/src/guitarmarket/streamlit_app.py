@@ -1,7 +1,7 @@
 import os
 from playwright.sync_api import sync_playwright
 
-os.system("playwright install --with-deps")
+os.system("playwright install chromium --no-root")
 
 # Handle SQLite for ChromaDB
 try:
