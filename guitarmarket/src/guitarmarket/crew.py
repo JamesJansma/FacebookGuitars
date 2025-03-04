@@ -1,9 +1,10 @@
-from crewai import Agent, Crew, Process, Task
+from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from crewai.tools import tool
 from pydantic import BaseModel, ValidationError
 from typing import List
 from playwright.sync_api import sync_playwright
+import streamlit as st
 import os
 import time
 from bs4 import BeautifulSoup
@@ -161,13 +162,21 @@ class Guitarmarket():
 				browser.close
 				return parsed
 
+
+	llm = LLM(
+            api_key=st.secrets["OPENAI_API_KEY"],
+            model="openai/gpt-4o-mini"
+        )
+	
+	
 	@agent
 	def listing_finder(self) -> Agent:
 		return Agent(
 			config=self.agents_config['listing_finder'],
 			# knowledge=[self.listing_source],
 			tools=[self.scraper_tool],
-			verbose=True
+			verbose=True,
+			llm=self.llm
 		)
 	
 	@agent
@@ -176,7 +185,8 @@ class Guitarmarket():
 			config=self.agents_config['market_value_finder'],
 			tools=[self.gc_scraper_tool],
 			memory=True,
-			verbose=True
+			verbose=True,
+			llm=self.llm
 		)
 	
 	@agent
@@ -184,7 +194,8 @@ class Guitarmarket():
 		return Agent(
 			config=self.agents_config['comparison_agent'],
 			tools=[self.comparison_tool],
-			verbose=True
+			verbose=True,
+			llm=self.llm
 		)
 
 	# https://docs.crewai.com/concepts/tasks#overview-of-a-task
