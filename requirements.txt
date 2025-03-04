@@ -1,4 +1,6 @@
 crewai
-crewai[tools]
+crewai-tools
 streamlit
-pydantic
+exa-py
+requests
+pysqlite3-binary
