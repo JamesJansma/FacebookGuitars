@@ -70,10 +70,10 @@ class Guitarmarket():
 		facebook_market_url = 'https://www.facebook.com/marketplace/spokane/search/?query=guitar&exact=false'
 		login_url = "https://www.facebook.com/login/device-based/regular/login/"
 		conditions = ['new']
-
+		print("Scraper tool called")
 		parsed = []
 		with sync_playwright() as p:
-			browser = p.chromium.launch(headless=True)
+			browser = p.chromium.launch(headless=False)
 			page = browser.new_page()
 			page.goto(login_url)
 			time.sleep(2)
@@ -85,6 +85,7 @@ class Guitarmarket():
 				time.sleep(2)
 				page.wait_for_selector('button[name="login"]').click()
 				time.sleep(10)
+				print("Login Completed")
 			except:
 				print("login failed")
 
@@ -126,7 +127,7 @@ class Guitarmarket():
 
 		with sync_playwright() as p:
 				# Open a new browser page.
-				browser = p.chromium.launch(headless=True)
+				browser = p.chromium.launch(headless=False)
 				page = browser.new_page()
 				# Navigate to the URL.
 				page.goto(start_up_url)
