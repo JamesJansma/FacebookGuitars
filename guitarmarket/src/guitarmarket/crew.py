@@ -1,12 +1,20 @@
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from crewai.tools import tool
+from crewai_tools import VisionTool
 from pydantic import BaseModel, ValidationError
 from typing import List
 from playwright.sync_api import sync_playwright
+from PIL import Image
+from io import BytesIO
 import os
 import time
+import base64
+import requests
 from bs4 import BeautifulSoup
+import litellm
+from litellm import completion
+
 
 class GuitarData(BaseModel):
     Model: str
@@ -23,6 +31,7 @@ class Guitarmarket():
 
 	agents_config = 'config/agents.yaml'
 	tasks_config = 'config/tasks.yaml'
+	vision_tool = VisionTool()
 
 	# listing_read_tool = FileReadTool(file_path='src/crewaisimple/guitar_listings.csv')
 	# market_read_tool = FileReadTool(file_path='src/crewaisimple/market_listings.csv')
@@ -34,6 +43,7 @@ class Guitarmarket():
 		
 		try:
 			# Convert the JSON string into a ListingJson object
+			print("Incoming listing_json (type):", type(listing_json))
 			listing_json = ListingJson.model_validate_json(listing_json)
 		except ValidationError as e:
 			return f"Error parsing input data: {e}"
@@ -66,7 +76,8 @@ class Guitarmarket():
 	def scraper_tool() -> str:
 		"""Does not take any input as it searches for guitars and then returns
 			a listing of the guitars on the market place in the form of a json with \'Model\', \'Price\', and \'Condition\'"""
-		
+		os.makedirs("images", exist_ok=True)
+
 		facebook_market_url = 'https://www.facebook.com/marketplace/spokane/search/?query=guitar&exact=false'
 		login_url = "https://www.facebook.com/login/device-based/regular/login/"
 		conditions = ['new']
@@ -79,9 +90,9 @@ class Guitarmarket():
 			time.sleep(2)
 			try:
 				# login(page)
-				page.locator('input[name="email"]').type("j89666944@gmail.com",delay=150)
+				page.locator('input[name="email"]').type("",delay=150)
 				time.sleep(2)
-				page.wait_for_selector('input[name="pass"]').type("jamesjames4", delay=150)
+				page.wait_for_selector('input[name="pass"]').type("", delay=150)
 				time.sleep(2)
 				page.wait_for_selector('button[name="login"]').click()
 				time.sleep(10)
@@ -97,13 +108,12 @@ class Guitarmarket():
 				time.sleep(2)
 				for i in range(1):
 					# page.mouse.wheel(0,15000)
-					time.sleep(2)
+					# time.sleep(2)
 					html = page.content()
 					soup = BeautifulSoup(html, 'html.parser')
 					listings = soup.find_all('div', class_='x9f619 x78zum5 x1r8uery xdt5ytf x1iyjqo2 xs83m0k x1e558r4 x150jy0e x1iorvi4 xjkvuk6 xnpuxes x291uyu x1uepa24')
-					i = 0
-					for listing in listings:
-						i += 1
+					for i, listing in enumerate(listings):
+						if i >= 2: continue
 						try:
 							title = listing.find('span', 'x1lliihq x6ikm8r x10wlt62 x1n2onr6').text
 							price = listing.find('span', 'x4zkp8e').text
@@ -112,11 +122,16 @@ class Guitarmarket():
 									'Price': price.replace('$',''),
 									'Condition' : condition
 								})
+							img_url = listing.find('img').get('src')
+							
+							img_data = requests.get(img_url).content
+							
+							with open(f"images/image_{i}.jpg", "wb") as img_file:
+								img_file.write(img_data)
 						except:
 							pass
 			browser.close()
 			print("Finished scraper tool")
-			print(f"First parsed: {parsed[0]}")
 			return parsed
 
 	@tool("gc scraper tool")
@@ -126,6 +141,7 @@ class Guitarmarket():
 		
 		start_up_url = 'https://www.guitarcenter.com/'
 		_model = model
+		print(f"Model passed into gs scraper: {_model}")
 
 		with sync_playwright() as p:
 				# Open a new browser page.
@@ -164,11 +180,67 @@ class Guitarmarket():
 				browser.close
 				return parsed
 
+	@tool("image get tool")
+	def img_get_tool(listing_json: str) -> dict:
+		"""Takes in a json containing all of the guitar data and 
+		uses GPT-4o to identify the guitar model from an image"""
 
-	# llm = LLM(
-    #         api_key=st.secrets["OPENAI_API_KEY"],
-    #         model="openai/gpt-4o-mini"
-    #     )
+		try:
+			print("Incoming listing_json (type):", type(listing_json))
+			data = ListingJson.model_validate_json(listing_json)
+		except ValidationError as e:
+			return {"error": f"Invalid input format: {e}"}
+
+		updated_listings = []
+
+		for i, listing in enumerate(data.listingGuitars):
+			path = f"images/image_{i}.jpg"
+
+			if not os.path.exists(path):
+				print(f"Image not found at: {path}")
+				updated_listings.append(listing.model_dump())
+				continue
+
+			with Image.open(path) as img:
+				if img.mode in ("RGBA", "P"):
+					img = img.convert("RGB")
+				buffer = BytesIO()
+				img.save(buffer, format="jpeg")
+				buffer.seek(0)
+				base64_image = base64.b64encode(buffer.read()).decode("utf-8")
+
+			response = completion(
+			model="gpt-4o",
+			messages=[
+				{
+					"role": "user",
+					"content": [
+						{"type": "text", "text": f"What make and model is this guitar? Be specific. The name given with the guitar is '{listing.Model}' however it may be vague."},
+						{
+							"type": "image_url",
+							"image_url": {
+								"url": f"data:image/jpeg;base64,{base64_image}",
+								"detail": "high"
+							}
+						}
+					]
+				}
+			],
+			max_tokens=300
+			)
+
+			updated_model = response["choices"][0]["message"]["content"]
+			updated_listings.append({
+                "Model": updated_model.strip(),
+                "Price": listing.Price,
+                "Condition": listing.Condition
+            })
+		
+		return {
+        "marketGuitars": [],  
+        "listingGuitars": updated_listings
+    	}
+			
 	
 	
 	@agent
@@ -182,13 +254,19 @@ class Guitarmarket():
 		)
 	
 	@agent
+	def img_comparison(self) -> Agent:
+		return Agent(
+			config=self.agents_config['img_comparison'],
+			tools=[self.img_get_tool],
+			verbose=True
+		)
+	
+	@agent
 	def market_value_finder(self) -> Agent:
 		return Agent(
 			config=self.agents_config['market_value_finder'],
 			tools=[self.gc_scraper_tool],
-			memory=True,
 			verbose=True,
-			# llm=self.llm
 		)
 	
 	@agent
@@ -205,6 +283,13 @@ class Guitarmarket():
 	def listing_task(self) -> Task:
 		return Task(
 			config=self.tasks_config['listing_task'],
+		)
+	
+
+	@task
+	def img_analyze_task(self) -> Task:
+		return Task(
+			config=self.tasks_config['img_analyze_task'],
 		)
 	
 	@task
