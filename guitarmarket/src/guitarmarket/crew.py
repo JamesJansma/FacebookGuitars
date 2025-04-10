@@ -81,8 +81,10 @@ class Guitarmarket():
 		facebook_market_url = 'https://www.facebook.com/marketplace/spokane/search/?query=guitar&exact=false'
 		login_url = "https://www.facebook.com/login/device-based/regular/login/"
 		conditions = ['new']
+
 		print("Scraper tool called")
 		parsed = []
+
 		with sync_playwright() as p:
 			browser = p.chromium.launch(headless=True)
 			page = browser.new_page()
@@ -90,9 +92,9 @@ class Guitarmarket():
 			time.sleep(2)
 			try:
 				# login(page)
-				page.locator('input[name="email"]').type("",delay=150)
+				page.locator('input[name="email"]').type("j89666944@gmail.com",delay=150)
 				time.sleep(2)
-				page.wait_for_selector('input[name="pass"]').type("", delay=150)
+				page.wait_for_selector('input[name="pass"]').type("jamesjames4", delay=150)
 				time.sleep(2)
 				page.wait_for_selector('button[name="login"]').click()
 				time.sleep(10)
@@ -100,89 +102,130 @@ class Guitarmarket():
 			except:
 				print("login failed")
 
+			parsed = []
 
 			for condition in conditions:
 				facebook_market_condition_url = f'https://www.facebook.com/marketplace/spokane/search?itemCondition={condition}&query=guitar&exact=false'
-
+				print(f"Going to page: {facebook_market_condition_url}")
 				page.goto(facebook_market_condition_url)
 				time.sleep(2)
-				for i in range(1):
-					# page.mouse.wheel(0,15000)
-					# time.sleep(2)
+
+				divs = page.locator('div.x9f619.x78zum5.x1r8uery.xdt5ytf.x1iyjqo2.xs83m0k.x1e558r4.x150jy0e.x1iorvi4.xjkvuk6.xnpuxes.x291uyu.x1uepa24')
+				count = divs.count()
+				print(f"Found {count} divs")
+				time.sleep(2)
+				for j in range(3): #this now deals with amount of guitars.
+					divs.nth(j).click()
+					time.sleep(1)
+					
 					html = page.content()
 					soup = BeautifulSoup(html, 'html.parser')
-					listings = soup.find_all('div', class_='x9f619 x78zum5 x1r8uery xdt5ytf x1iyjqo2 xs83m0k x1e558r4 x150jy0e x1iorvi4 xjkvuk6 xnpuxes x291uyu x1uepa24')
-					for i, listing in enumerate(listings):
-						if i >= 2: continue
-						try:
-							title = listing.find('span', 'x1lliihq x6ikm8r x10wlt62 x1n2onr6').text
-							price = listing.find('span', 'x4zkp8e').text
-							parsed.append({
-									'Model': title,
-									'Price': price.replace('$',''),
-									'Condition' : condition
-								})
-							img_url = listing.find('img').get('src')
-							
-							img_data = requests.get(img_url).content
-							
-							with open(f"images/image_{i}.jpg", "wb") as img_file:
-								img_file.write(img_data)
-						except:
-							pass
+					listing = soup.find('div', class_='x1bwycvy x16xn7b0 x1bifzbx x6ikm8r x10wlt62 xh8yej3 x7pk29f x1dr59a3 xiylbte')
+					images = soup.find_all('div',class_='x1rg5ohu x2lah0s xc9qbxq x14qfxbe x1mnrxsn x1w0mnb')
+
+					print(f"Images count: {len(images)}")
+
+					title = listing.find('span', 'x1xlr1w8').text
+					print(f"Title: {title}")
+
+					pre_price = listing.find('span', 'xk50ysn').text
+					pre_price = pre_price.split('$')
+					price = pre_price[1]
+					print(f"Price: {price}")
+
+					parsed.append({
+							'title': title,
+							'price': price,
+							'condition' : condition
+						})
+					
+					try:
+						os.makedirs(f"images/guitar_{j}", exist_ok=True)
+						print(f"Created image directory: \"images/guitar_{j}\"")
+					except:
+						print("Was not able to create directory \"images/guitar_{j}\"")
+		   
+					if len(images) == 0:
+						img_url = listing.find('img').get('src')
+						img_data = requests.get(img_url).content
+						with open(f"images/guitar_{j}/image_{0}.jpg", "wb") as img_file:
+							img_file.write(img_data)
+					else:
+						for i, image in enumerate(images):
+							try:
+								img_url = image.find('img').get('src')
+								print(f"Img url: {img_url}")
+								img_data = requests.get(img_url).content
+
+								with open(f"images/guitar_{j}/image_{i}.jpg", "wb") as img_file:
+									img_file.write(img_data)
+							except:
+								print("there was no image found")
+								pass
+						
+					page.go_back()
+					time.sleep(1)
+
 			browser.close()
 			print("Finished scraper tool")
 			return parsed
 
 	@tool("gc scraper tool")
-	def gc_scraper_tool(model: str) ->str:
-		"""Takes in the name of the model of a guitar and then finds the first few results of that model from a 
-			guitar store. The guitars are all new and the return value is a json with \'Model\',\'Price\', and \'Condition\'"""
+	def gc_scraper_tool(listing_json: str) ->str:
+		"""Takes in the ListingJson data object. 
+		The guitars are all new and the return value is a list with \'Model\',\'Price\', and \'Condition\'"""
+		try:
+			print("Incoming listing_json (type):", type(listing_json))
+			data = ListingJson.model_validate_json(listing_json)
+		except ValidationError as e:
+			return {"error": f"Invalid input format: {e}"}
 		
 		start_up_url = 'https://www.guitarcenter.com/'
-		_model = model
-		print(f"Model passed into gs scraper: {_model}")
+		market_list = []
+		for i, listing in enumerate(data.listingGuitars):
+			_model = listing.Model
+			print(f"Model passed into gs scraper: {_model}")
 
-		with sync_playwright() as p:
-				# Open a new browser page.
-				browser = p.chromium.launch(headless=True)
-				page = browser.new_page()
-				# Navigate to the URL.
-				page.goto(start_up_url)
-				time.sleep(2)
-				page.locator('input[id="header-search-input"]').type(_model)
-				time.sleep(1)  
-				page.wait_for_selector('button[class="absolute right-0 top-0 w-[56px] h-full flex items-center justify-center cursor-pointer"]').click()
-				time.sleep(1)
-				current_url = page.url
-				current_url += '&filters=condition:New'
-				page.goto(current_url)
-				time.sleep(2)
-				page.mouse.wheel(0,1500)
+			with sync_playwright() as p:
+					# Open a new browser page.
+					browser = p.chromium.launch(headless=True)
+					page = browser.new_page()
+					# Navigate to the URL.
+					page.goto(start_up_url)
+					time.sleep(2)
+					page.locator('input[id="header-search-input"]').type(_model)
+					time.sleep(1)  
+					page.wait_for_selector('button[class="absolute right-0 top-0 w-[56px] h-full flex items-center justify-center cursor-pointer"]').click()
+					time.sleep(1)
+					current_url = page.url
+					current_url += '&filters=condition:New'
+					page.goto(current_url)
+					time.sleep(2)
+					page.mouse.wheel(0,1500)
 
-				parsed = []
-				html = page.content()
+					parsed = []
+					html = page.content()
 
-				soup = BeautifulSoup(html, 'html.parser')
-				listings = soup.find_all('div', class_='jsx-f0e60c587809418b plp-product-details px-[10px]')
+					soup = BeautifulSoup(html, 'html.parser')
+					listings = soup.find_all('div', class_='jsx-f0e60c587809418b plp-product-details px-[10px]')
 
-				for listing in listings:
-						title = listing.find('h2','jsx-f0e60c587809418b').text
-						price = listing.find('span', 'jsx-f0e60c587809418b sale-price font-bold text-[#2d2d2d]').text
-						parsed.append({
-								'Model' : _model,
-								'Price' : price,
-								'Condition' : "new"
-						})
-						break
-						
-				time.sleep(3)
-				browser.close
-				return parsed
+					for listing in listings:
+							title = listing.find('h2','jsx-f0e60c587809418b').text
+							price = listing.find('span', 'jsx-f0e60c587809418b sale-price font-bold text-[#2d2d2d]').text
+							market_list.append({
+									'Model' : _model,
+									'Price' : price,
+									'Condition' : "new"
+							})
+							break
+							
+					time.sleep(3)
+					browser.close
+		return market_list
 
 	@tool("image get tool")
 	def img_get_tool(listing_json: str) -> dict:
-		"""Takes in a json containing all of the guitar data and 
+		"""Takes in the ListingJson data structure containing all of the guitar data and 
 		uses GPT-4o to identify the guitar model from an image"""
 
 		try:
@@ -283,6 +326,7 @@ class Guitarmarket():
 	def listing_task(self) -> Task:
 		return Task(
 			config=self.tasks_config['listing_task'],
+			output_model=ListingJson
 		)
 	
 
@@ -290,6 +334,7 @@ class Guitarmarket():
 	def img_analyze_task(self) -> Task:
 		return Task(
 			config=self.tasks_config['img_analyze_task'],
+			output_model=ListingJson
 		)
 	
 	@task
