@@ -12,9 +12,10 @@ import time
 import base64
 import requests
 from bs4 import BeautifulSoup
-import litellm
 from litellm import completion
-
+import smtplib
+from email.message import EmailMessage
+from dotenv import load_dotenv
 
 class GuitarData(BaseModel):
     Model: str
@@ -24,6 +25,10 @@ class GuitarData(BaseModel):
 class ListingJson(BaseModel):
     marketGuitars: List[GuitarData]  
     listingGuitars: List[GuitarData]  
+
+load_dotenv()
+email_address = os.getenv("EMAIL_ADDRESS")
+email_password = os.getenv("EMAIL_PASSWORD")
 
 @CrewBase
 class Guitarmarket():
@@ -188,7 +193,7 @@ class Guitarmarket():
 
 			with sync_playwright() as p:
 					# Open a new browser page.
-					browser = p.chromium.launch(headless=True)
+					browser = p.chromium.launch(headless=False)
 					page = browser.new_page()
 					# Navigate to the URL.
 					page.goto(start_up_url)
@@ -198,20 +203,22 @@ class Guitarmarket():
 					page.wait_for_selector('button[class="absolute right-0 top-0 w-[56px] h-full flex items-center justify-center cursor-pointer"]').click()
 					time.sleep(1)
 					current_url = page.url
-					current_url += '&filters=condition:New'
-					page.goto(current_url)
+					# current_url += '&filters=condition:New'
+					# page.goto(current_url)
 					time.sleep(2)
-					page.mouse.wheel(0,1500)
+					page.mouse.wheel(0,750)
 
 					parsed = []
 					html = page.content()
 
 					soup = BeautifulSoup(html, 'html.parser')
 					listings = soup.find_all('div', class_='jsx-f0e60c587809418b plp-product-details px-[10px]')
-
-					for listing in listings:
-							title = listing.find('h2','jsx-f0e60c587809418b').text
-							price = listing.find('span', 'jsx-f0e60c587809418b sale-price font-bold text-[#2d2d2d]').text
+					print(f"Number of listings found: {len(listings)}")
+					for list in listings:
+							title = list.find('h2','jsx-f0e60c587809418b').text
+							print("Title was found")
+							price = list.find('span', 'jsx-f0e60c587809418b sale-price').text
+							print(f"Title found: {title}, Price found: {price}")
 							market_list.append({
 									'Model' : _model,
 									'Price' : price,
@@ -223,7 +230,30 @@ class Guitarmarket():
 					browser.close
 		return market_list
 
-	@tool("image get tool")
+
+	@tool("email_sender_tool")
+	def email_sender_tool(email_body: str) -> str:
+		"""This tool takes in the body of an email and then composes and sends an email. 
+			Returns a string saying it was successful or an error message"""
+		msg = EmailMessage()
+		msg.set_content(email_body)
+
+		msg['Subject'] = "Guitar Comparisons"
+		msg['From'] = email_address
+		msg['To'] = email_address
+
+		try:
+			with smtplib.SMTP('smtp.gmail.com', 587) as server:
+				server.ehlo()          # Identify with the server
+				server.starttls()      # Secure the connection
+				server.ehlo()          # Re-identify after starting TLS
+				server.login(email_address, email_password)
+				server.send_message(msg)
+			return("Successfull")
+		except Exception as e:
+			return(f"An error occurred: {e}")
+
+	@tool("img_get_tool")
 	def img_get_tool(listing_json: str) -> dict:
 		"""Takes in the ListingJson data structure containing all of the guitar data and 
 		uses GPT-4o to identify the guitar model from an image"""
@@ -237,20 +267,38 @@ class Guitarmarket():
 		updated_listings = []
 
 		for i, listing in enumerate(data.listingGuitars):
-			path = f"images/image_{i}.jpg"
+			image_messages = []
 
-			if not os.path.exists(path):
-				print(f"Image not found at: {path}")
+			for j in range(4):
+				path = f"images/guitar_{i}/image_{j}.jpg"
+
+				if not os.path.exists(path):
+					print(f"Image not found at: {path}")
+					updated_listings.append(listing.model_dump())
+					continue
+
+				with Image.open(path) as img:
+					if img.mode in ("RGBA", "P"):
+						img = img.convert("RGB")
+					buffer = BytesIO()
+					img.save(buffer, format="jpeg")
+					buffer.seek(0)
+					base64_image = base64.b64encode(buffer.read()).decode("utf-8")
+
+				image_messages.append({
+					"type": "image_url",
+					"image_url": {
+						"url": f"data:image/jpeg;base64,{base64_image}",
+						"detail": "high"
+					}
+				})
+
+			if not image_messages:
+				print(f"No valid images found for listing {i}")
 				updated_listings.append(listing.model_dump())
 				continue
-
-			with Image.open(path) as img:
-				if img.mode in ("RGBA", "P"):
-					img = img.convert("RGB")
-				buffer = BytesIO()
-				img.save(buffer, format="jpeg")
-				buffer.seek(0)
-				base64_image = base64.b64encode(buffer.read()).decode("utf-8")
+			
+			print(f"Number of images given to gpt {len(image_messages)}")
 
 			response = completion(
 			model="gpt-4o",
@@ -258,14 +306,12 @@ class Guitarmarket():
 				{
 					"role": "user",
 					"content": [
-						{"type": "text", "text": f"What make and model is this guitar? Be specific. The name given with the guitar is '{listing.Model}' however it may be vague."},
-						{
-							"type": "image_url",
-							"image_url": {
-								"url": f"data:image/jpeg;base64,{base64_image}",
-								"detail": "high"
-							}
-						}
+						{"type": "text", "text":( 
+							f"The following guitar listing includes up to 4 images. "
+    						f"The user-provided title for this guitar is: '{listing.Model}'. "
+    						"Please analyze the images and provide the most accurate and specific make and model of the guitar. "
+						)},
+						*image_messages
 					]
 				}
 			],
@@ -316,7 +362,7 @@ class Guitarmarket():
 	def comparison_agent(self) -> Agent:
 		return Agent(
 			config=self.agents_config['comparison_agent'],
-			tools=[self.comparison_tool],
+			tools=[self.comparison_tool, self.email_sender_tool],
 			verbose=True,
 			# llm=self.llm
 		)
