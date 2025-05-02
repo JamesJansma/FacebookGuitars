@@ -10,7 +10,6 @@ msg['Subject'] = "Guitar Comparisons"
 msg['From'] = sendEmail
 msg['To'] = sendEmail
 
-password = "nsod npzg jpij rcls"
 
 try:
 	with smtplib.SMTP('smtp.gmail.com', 587) as server:
