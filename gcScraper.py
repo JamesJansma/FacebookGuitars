@@ -23,7 +23,7 @@ with sync_playwright() as p:
         current_url += '&filters=condition:New'
         page.goto(current_url)
         time.sleep(2)
-        page.mouse.wheel(0,1500)
+        page.mouse.wheel(0,500)
 
         parsed = []
         html = page.content()

@@ -1,4 +1,4 @@
-listing_finder:
+facebook_listing_agent:
   role: >
     {topic} listing finder.
   goal: >
@@ -20,7 +20,7 @@ img_comparison:
 
 market_value_finder:
   role: >
-    {topic} market value finder.
+    market value finder.
   goal: >
     Find market values using the tools given to you and the provided listings.
   backstory: >
@@ -31,7 +31,7 @@ market_value_finder:
 
 comparison_agent:
   role: > 
-    {topic} Comparison agent. 
+    Comparison agent. 
   goal: > 
     Use the tools given to you to get the result and clearly print the result of the tool
   backstory: >

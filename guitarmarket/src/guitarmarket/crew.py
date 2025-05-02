@@ -36,46 +36,10 @@ class Guitarmarket():
 
 	agents_config = 'config/agents.yaml'
 	tasks_config = 'config/tasks.yaml'
-	vision_tool = VisionTool()
 
 	# listing_read_tool = FileReadTool(file_path='src/crewaisimple/guitar_listings.csv')
 	# market_read_tool = FileReadTool(file_path='src/crewaisimple/market_listings.csv')
 
-	@tool("comparison tool")
-	def comparison_tool(listing_json: str) -> str:
-		"""Takes a json including the all the data for the guitars. The tool then compares the prices
-			and returns a string with the output of the comparisons"""
-		
-		try:
-			# Convert the JSON string into a ListingJson object
-			print("Incoming listing_json (type):", type(listing_json))
-			listing_json = ListingJson.model_validate_json(listing_json)
-		except ValidationError as e:
-			return f"Error parsing input data: {e}"
-		
-		comparison = "Data post comparisons:\n"
-
-		market_dict = {guitar.Model: guitar.Price for guitar in listing_json.marketGuitars}
-
-
-		for listing in listing_json.listingGuitars:
-			market_price = market_dict.get(listing.Model)
-
-			if market_price:
-				if listing.Price < market_price:
-					comparison += (
-						f"The listing price for {listing.Model} is better than the market value.\n"
-						f"Listing value: {listing.Price}, Market value: {market_price}\n"
-					)
-				else:
-					comparison += (
-						f"The market price for {listing.Model} is better than the listing value.\n"
-						f"Listing value: {listing.Price}, Market value: {market_price}\n"
-					)
-			else:
-				comparison += f"No market data found for {listing.Model}.\n"
-				
-		return comparison
 
 	@tool("scraper tool")
 	def scraper_tool() -> str:
@@ -85,13 +49,13 @@ class Guitarmarket():
 
 		facebook_market_url = 'https://www.facebook.com/marketplace/spokane/search/?query=guitar&exact=false'
 		login_url = "https://www.facebook.com/login/device-based/regular/login/"
-		conditions = ['new']
+		conditions = ['new','used_like_new', 'used_good']
 
 		print("Scraper tool called")
 		parsed = []
 
 		with sync_playwright() as p:
-			browser = p.chromium.launch(headless=True)
+			browser = p.chromium.launch(headless=False)
 			page = browser.new_page()
 			page.goto(login_url)
 			time.sleep(2)
@@ -108,11 +72,11 @@ class Guitarmarket():
 				print("login failed")
 
 			parsed = []
-
+			i = 0
 			for condition in conditions:
 				facebook_market_condition_url = f'https://www.facebook.com/marketplace/spokane/search?itemCondition={condition}&query=guitar&exact=false'
 				print(f"Going to page: {facebook_market_condition_url}")
-				page.goto(facebook_market_condition_url)
+				page.goto(facebook_market_condition_url, timeout=90000)
 				time.sleep(2)
 
 				divs = page.locator('div.x9f619.x78zum5.x1r8uery.xdt5ytf.x1iyjqo2.xs83m0k.x1e558r4.x150jy0e.x1iorvi4.xjkvuk6.xnpuxes.x291uyu.x1uepa24')
@@ -145,30 +109,31 @@ class Guitarmarket():
 						})
 					
 					try:
-						os.makedirs(f"images/guitar_{j}", exist_ok=True)
-						print(f"Created image directory: \"images/guitar_{j}\"")
+						os.makedirs(f"images/guitar_{i}", exist_ok=True)
+						print(f"Created image directory: \"images/guitar_{i}\"")
 					except:
 						print("Was not able to create directory \"images/guitar_{j}\"")
 		   
 					if len(images) == 0:
 						img_url = listing.find('img').get('src')
 						img_data = requests.get(img_url).content
-						with open(f"images/guitar_{j}/image_{0}.jpg", "wb") as img_file:
+						with open(f"images/guitar_{i}/image_{0}.jpg", "wb") as img_file:
 							img_file.write(img_data)
+						
 					else:
-						for i, image in enumerate(images):
+						for k, image in enumerate(images):
 							try:
 								img_url = image.find('img').get('src')
-								print(f"Img url: {img_url}")
 								img_data = requests.get(img_url).content
 
-								with open(f"images/guitar_{j}/image_{i}.jpg", "wb") as img_file:
+								with open(f"images/guitar_{i}/image_{k}.jpg", "wb") as img_file:
 									img_file.write(img_data)
 							except:
 								print("there was no image found")
 								pass
 						
 					page.go_back()
+					i += 1
 					time.sleep(1)
 
 			browser.close()
@@ -193,7 +158,7 @@ class Guitarmarket():
 
 			with sync_playwright() as p:
 					# Open a new browser page.
-					browser = p.chromium.launch(headless=False)
+					browser = p.chromium.launch(headless=True)
 					page = browser.new_page()
 					# Navigate to the URL.
 					page.goto(start_up_url)
@@ -202,11 +167,8 @@ class Guitarmarket():
 					time.sleep(1)  
 					page.wait_for_selector('button[class="absolute right-0 top-0 w-[56px] h-full flex items-center justify-center cursor-pointer"]').click()
 					time.sleep(1)
-					current_url = page.url
-					# current_url += '&filters=condition:New'
-					# page.goto(current_url)
 					time.sleep(2)
-					page.mouse.wheel(0,750)
+					page.mouse.wheel(0,500)
 
 					parsed = []
 					html = page.content()
@@ -217,7 +179,7 @@ class Guitarmarket():
 					for list in listings:
 							title = list.find('h2','jsx-f0e60c587809418b').text
 							print("Title was found")
-							price = list.find('span', 'jsx-f0e60c587809418b sale-price').text
+							price = list.find('span', 'jsx-f0e60c587809418b sale-price font-bold text-[#2d2d2d]').text
 							print(f"Title found: {title}, Price found: {price}")
 							market_list.append({
 									'Model' : _model,
@@ -229,29 +191,6 @@ class Guitarmarket():
 					time.sleep(3)
 					browser.close
 		return market_list
-
-
-	@tool("email_sender_tool")
-	def email_sender_tool(email_body: str) -> str:
-		"""This tool takes in the body of an email and then composes and sends an email. 
-			Returns a string saying it was successful or an error message"""
-		msg = EmailMessage()
-		msg.set_content(email_body)
-
-		msg['Subject'] = "Guitar Comparisons"
-		msg['From'] = email_address
-		msg['To'] = email_address
-
-		try:
-			with smtplib.SMTP('smtp.gmail.com', 587) as server:
-				server.ehlo()          # Identify with the server
-				server.starttls()      # Secure the connection
-				server.ehlo()          # Re-identify after starting TLS
-				server.login(email_address, email_password)
-				server.send_message(msg)
-			return("Successfull")
-		except Exception as e:
-			return(f"An error occurred: {e}")
 
 	@tool("img_get_tool")
 	def img_get_tool(listing_json: str) -> dict:
@@ -270,6 +209,7 @@ class Guitarmarket():
 			image_messages = []
 
 			for j in range(4):
+				
 				path = f"images/guitar_{i}/image_{j}.jpg"
 
 				if not os.path.exists(path):
@@ -330,12 +270,68 @@ class Guitarmarket():
         "listingGuitars": updated_listings
     	}
 			
-	
+	@tool("comparison tool")
+	def comparison_tool(listing_json: str) -> str:
+		"""Takes a json including the all the data for the guitars. The tool then compares the prices
+			and returns a string with the output of the comparisons"""
+		
+		try:
+			# Convert the JSON string into a ListingJson object
+			print("Incoming listing_json (type):", type(listing_json))
+			listing_json = ListingJson.model_validate_json(listing_json)
+		except ValidationError as e:
+			return f"Error parsing input data: {e}"
+		
+		comparison = "Data post comparisons:\n"
+
+		market_dict = {guitar.Model: guitar.Price for guitar in listing_json.marketGuitars}
+
+
+		for listing in listing_json.listingGuitars:
+			market_price = market_dict.get(listing.Model)
+
+			if market_price:
+				if listing.Price < market_price:
+					comparison += (
+						f"The listing price for {listing.Model} is better than the market value.\n"
+						f"Listing value: {listing.Price}, Market value: {market_price}\n"
+					)
+				else:
+					comparison += (
+						f"The market price for {listing.Model} is better than the listing value.\n"
+						f"Listing value: {listing.Price}, Market value: {market_price}\n"
+					)
+			else:
+				comparison += f"No market data found for {listing.Model}.\n"
+				
+		return comparison
+
+	@tool("email_sender_tool")
+	def email_sender_tool(email_body: str) -> str:
+		"""This tool takes in the body of an email and then composes and sends an email. 
+			Returns a string saying it was successful or an error message"""
+		msg = EmailMessage()
+		msg.set_content(email_body)
+
+		msg['Subject'] = "Guitar Comparisons"
+		msg['From'] = email_address
+		msg['To'] = email_address
+
+		try:
+			with smtplib.SMTP('smtp.gmail.com', 587) as server:
+				server.ehlo()          # Identify with the server
+				server.starttls()      # Secure the connection
+				server.ehlo()          # Re-identify after starting TLS
+				server.login(email_address, email_password)
+				server.send_message(msg)
+			return("Successfull")
+		except Exception as e:
+			return(f"An error occurred: {e}")
 	
 	@agent
-	def listing_finder(self) -> Agent:
+	def facebook_listing_agent(self) -> Agent:
 		return Agent(
-			config=self.agents_config['listing_finder'],
+			config=self.agents_config['facebook_listing_agent'],
 			# knowledge=[self.listing_source],
 			tools=[self.scraper_tool],
 			verbose=True,
@@ -396,7 +392,6 @@ class Guitarmarket():
 			config=self.tasks_config['comparison_task'],
 		)
 
-
 	@crew
 	def crew(self) -> Crew:
 		"""Creates the Crewaisimple crew"""
@@ -408,5 +403,4 @@ class Guitarmarket():
 			# process=Process.hierarchical,
 			rules=["Agents may only use provided knowledge, tools, and memory"],
 			verbose=True,
-			
 		)
